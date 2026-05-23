@@ -62,7 +62,7 @@ extern FLOAT _fGlobalOptionsAdjuster;
 extern FLOAT _fGlobalModAdjuster;
 extern FLOAT _fGlobalButtonAdjuster;
 extern FLOAT _fGlobalProfileFOVAdjuster;
-#ifdef PLATFORM_UNIX
+#if PLATFORM_UNIX && !__EMSCRIPTEN__
 ENGINE_API FLOAT _fWeaponFOVAdjuster;
 ENGINE_API FLOAT _fPlayerFOVAdjuster;
 ENGINE_API FLOAT _fArmorHeightAdjuster;
@@ -1303,9 +1303,9 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
        || (msg.message==WM_ACTIVATEAPP && !msg.wParam)) {
         // if application is running and in full screen mode
         if( !_bWindowChanging && _bRunning) {
-          // minimize if in full screen 
+          // minimize if in full screen
           if( sam_bFullScreenActive) PostMessage(NULL, WM_SYSCOMMAND, SC_MINIMIZE, 0);
-          // just disable input if not in full screen 
+          // just disable input if not in full screen
           else _pInput->DisableInput();
         }
       }
@@ -1318,7 +1318,7 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
       }
 #endif
 
-      if (msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE && 
+      if (msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE &&
         (_gmRunningGameMode==GM_DEMO || _gmRunningGameMode==GM_INTRO)) {
         _pGame->StopGame();
         _gmRunningGameMode=GM_NONE;
@@ -1333,9 +1333,9 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
         msg.message=WM_NULL;
       }
 
-      BOOL bMenuForced = (_gmRunningGameMode==GM_NONE && 
+      BOOL bMenuForced = (_gmRunningGameMode==GM_NONE &&
         (_pGame->gm_csConsoleState==CS_OFF || _pGame->gm_csConsoleState==CS_TURNINGOFF));
-      BOOL bMenuToggle = (msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE 
+      BOOL bMenuToggle = (msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE
         && (_pGame->gm_csComputerState==CS_OFF || _pGame->gm_csComputerState==CS_ONINBACKGROUND));
       if( !bMenuActive) {
         if( bMenuForced || bMenuToggle) {
@@ -1441,7 +1441,7 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
       }
 
       // if toggling console
-      BOOL bConsoleKey = sam_bToggleConsole || (msg.message==WM_KEYDOWN && 
+      BOOL bConsoleKey = sam_bToggleConsole || (msg.message==WM_KEYDOWN &&
             // !!! FIXME: rcg11162001 This sucks.
             // FIXME: DG: we could use SDL_SCANCODE_GRAVE ?
         #ifdef PLATFORM_UNIX
@@ -1500,7 +1500,7 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
         // check if escape is pressed
         BOOL bEscape = (msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE);
         // check if console-invoke key is pressed
-        BOOL bTilde = (msg.message==WM_KEYDOWN && 
+        BOOL bTilde = (msg.message==WM_KEYDOWN &&
           (msg.wParam==VK_F1 ||
             // !!! FIXME: ugly.
             #ifdef PLATFORM_UNIX
@@ -1511,7 +1511,7 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
           ));
         // check if any key is pressed
         BOOL bAnyKey = (
-          (msg.message==WM_KEYDOWN && (msg.wParam==VK_SPACE || msg.wParam==VK_RETURN))|| 
+          (msg.message==WM_KEYDOWN && (msg.wParam==VK_SPACE || msg.wParam==VK_RETURN))||
           msg.message==WM_LBUTTONDOWN||msg.message==WM_RBUTTONDOWN);
 
         // if escape is pressed
@@ -1527,7 +1527,7 @@ int SubMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int 
             // skip to next demo
             _pGame->StopGame();
             _gmRunningGameMode = GM_NONE;
-            StartNextDemo();        
+            StartNextDemo();
           }
         }
       }

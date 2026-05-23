@@ -37,7 +37,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #ifdef PLATFORM_UNIX  /* rcg10042001 */
 #include "SDL_assert.h"
-#ifdef PLATFORM_FREEBSD
+#if PLATFORM_FREEBSD || __EMSCRIPTEN__
 #undef _assert
 #define _assert(x, y, z) SDL_assert(0)
 #endif

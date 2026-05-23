@@ -144,5 +144,26 @@ if(LINUX)
     endif(DEBIAN_FOUND)
 endif(LINUX)
 
+if(EMSCRIPTEN)
+    include(ExternalProject)
+    ExternalProject_Add(gl4es
+            PREFIX "gl4es"
+            URL "https://github.com/ptitSeb/gl4es/archive/refs/tags/v1.1.6.tar.gz"
+            BUILD_IN_SOURCE true
+            PATCH_COMMAND
+            CONFIGURE_COMMAND "emcmake"
+            "${CMAKE_COMMAND}"
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DNOX11=ON"
+            "-DNOEGL=ON"
+            "-DSTATICLIB=ON"
+            BUILD_COMMAND "${CMAKE_MAKE_PROGRAM}"
+            INSTALL_COMMAND "mv" "-f" "${CMAKE_BINARY_DIR}/gl4es/src/gl4es/lib/libGL.a" "${CMAKE_BINARY_DIR}/gl4es/src/gl4es/lib/libGL4ES.a"
+    )
+
+    link_directories("${CMAKE_BINARY_DIR}/gl4es/src/gl4es/lib")
+    include_directories("${CMAKE_BINARY_DIR}/gl4es/src/gl4es/include")
+endif ()
+
 add_subdirectory(SamTFE/Sources)
-add_subdirectory(SamTSE/Sources)
+#add_subdirectory(SamTSE/Sources)

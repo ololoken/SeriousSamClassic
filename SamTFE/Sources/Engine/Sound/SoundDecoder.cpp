@@ -25,6 +25,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <Engine/Math/Functions.h>
 #include <Engine/Base/DynamicLoader.h>
 
+#include <assert.h>
+
 // generic function called if a dll function is not found
 static void FailFunction_t(const char *strName) {
   ThrowF_t(TRANS("Function %s not found."), strName);
@@ -53,8 +55,14 @@ typedef float ALfloat;
 typedef ALsint32 ALhandle;
 
 // define amp11lib function pointers
-#define DLLFUNCTION(dll, output, name, inputs, params, required) \
-  output (__stdcall *p##name) inputs = NULL;
+#ifdef __EMSCRIPTEN__
+  #include "amp11lib/amp11lib.h"
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+    output (__cdecl *p##name) inputs = name;
+#else
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+    output (__stdcall *p##name) inputs = NULL;
+#endif
 #include "al_functions.h"
 #undef DLLFUNCTION
 
@@ -62,6 +70,10 @@ static void AMP11_SetFunctionPointers_t(void) {
   // get amp11lib function pointers
   const char *strName;
 
+#ifdef __EMSCRIPTEN__
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+    assert(p##name == name);
+#else
   #if (defined PLATFORM_WIN32) && (!defined PLATFORM_64BIT)
     #define DLLFUNCTION(dll, output, name, inputs, params, required) \
       strName = "_" #name "@" #params;  \
@@ -73,6 +85,7 @@ static void AMP11_SetFunctionPointers_t(void) {
       p##name = (output (__stdcall*) inputs) _hAmp11lib->FindSymbol(strName); \
       if(p##name == NULL) FailFunction_t(strName);
   #endif
+#endif
 
   #include "al_functions.h"
   #undef DLLFUNCTION
@@ -116,19 +129,31 @@ public:
 };
 
 // define vorbis function pointers
-#define DLLFUNCTION(dll, output, name, inputs, params, required) \
+#ifdef __EMSCRIPTEN__
+  #include "vorbis/vorbisfile.h"
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+  output (__cdecl *p##name) inputs = name;
+#else
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
   output (__cdecl *p##name) inputs = NULL;
+#endif
 #include "ov_functions.h"
 #undef DLLFUNCTION
 
 static void OV_SetFunctionPointers_t(void) {
   const char *strName;
   // get vo function pointers
-
+#ifdef __EMSCRIPTEN__
+  #include "vorbis/vorbisfile.h"
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+  assert(p##name == name);
+#else
   #define DLLFUNCTION(dll, output, name, inputs, params, required) \
     strName = #name ;  \
     p##name = (output (__cdecl *) inputs) _hOV->FindSymbol(strName); \
     if(p##name == NULL) FailFunction_t(strName);
+#endif
+
   #include "ov_functions.h"
   #undef DLLFUNCTION
 }
@@ -207,6 +232,7 @@ static ov_callbacks ovcCallbacks = {
 void CSoundDecoder::InitPlugins(void)
 {
   try {
+#ifndef __EMSCRIPTEN__
     // load vorbis
     if (_hOV==NULL) {
        #if ((defined PLATFORM_WIN32) && (defined NDEBUG))
@@ -223,7 +249,9 @@ void CSoundDecoder::InitPlugins(void)
          ThrowF_t(TRANS("Cannot load " VORBISLIB " shared library: %s."), _hOV->GetError());
        }
     }
-
+#else
+  #define VORBISLIB "(statically linked vorbis)"
+#endif
     // prepare function pointers
     OV_SetFunctionPointers_t();
 
@@ -235,6 +263,7 @@ void CSoundDecoder::InitPlugins(void)
   }
 
   try {
+#ifndef __EMSCRIPTEN__
     // load amp11lib
     if (_hAmp11lib==NULL) {
       _hAmp11lib = CDynamicLoader::GetInstance("amp11lib");
@@ -242,7 +271,7 @@ void CSoundDecoder::InitPlugins(void)
         ThrowF_t(TRANS("Cannot load amp11lib shared library: %s"), _hAmp11lib->GetError());
       }
     }
-
+#endif
     // prepare function pointers
     AMP11_SetFunctionPointers_t();
 

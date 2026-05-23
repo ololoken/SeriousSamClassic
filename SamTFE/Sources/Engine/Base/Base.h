@@ -54,7 +54,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
     #endif
   #endif
 
-#elif (defined __linux__) 
+#elif (defined __linux__) || (defined __EMSCRIPTEN__)
   #if (defined __ANDROID__) || (defined __android__) 
     #error "Android current isn't supported"
   #else

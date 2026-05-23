@@ -1,6 +1,9 @@
 /* Copyright (c) 2002-2012 Croteam Ltd. All rights reserved. */
 
 #include <Engine/Engine.h>
+#include <assert.h>
+#include <string>
+
 #include "SDL.h"
 
 static void FailFunction_t(const char *strName) {
@@ -15,15 +18,22 @@ static void sdlCheckError(BOOL bRes, const char *strDescription)
   WarningMessage("%s: %s", strDescription, sdlError);
 }
 
+#ifdef __EMSCRIPTEN__
+#include "GL/gl.h"
+#endif
 static void OGL_SetFunctionPointers_t(HINSTANCE hiOGL)
 {
   const char *strName;
   // get gl function pointers
-
+#ifdef __EMSCRIPTEN__
+  #define DLLFUNCTION(dll, output, name, inputs, params, required) \
+    assert(p##name == name);
+#else
   #define DLLFUNCTION(dll, output, name, inputs, params, required) \
     strName = #name;  \
     p##name = (output (__stdcall*) inputs) SDL_GL_GetProcAddress(strName); \
     if( required && p##name == NULL) FailFunction_t(strName);
+#endif
   #include "Engine/Graphics/gl_functions.h"
   #undef DLLFUNCTION
 }
@@ -81,9 +91,48 @@ BOOL CGfxLibrary::CreateContext_OGL(HDC hdc)
   return TRUE;
 }
 
+#ifdef __EMSCRIPTEN__
+#include "GL/gl.h"
+#include "GL/glext.h"
+
+extern "C" void gl4es_glLockArrays(GLint first, GLsizei count);
+extern "C" void gl4es_glUnlockArrays();
+extern "C" void gl4es_glActiveTexture(GLenum texture);
+extern "C" void gl4es_glClientActiveTexture(GLenum texture);
+#endif
 void *CGfxLibrary::OGL_GetProcAddress(const char *procname)
 {
-    return(SDL_GL_GetProcAddress(procname));
+#ifdef __EMSCRIPTEN__
+  std::string pn(procname);
+
+  if (std::string("glActiveTextureARB").compare(pn) == 0) {
+    return (void*)&gl4es_glActiveTexture;
+  }
+
+  if ( std::string( "glClientActiveTextureARB").compare(pn) == 0) {
+    return (void*)&gl4es_glClientActiveTexture;
+  }
+
+  if (std::string("glLockArraysEXT").compare(pn) == 0) {
+    return (void*)&gl4es_glLockArrays;
+  }
+
+  if (std::string("glUnlockArraysEXT").compare(pn) == 0) {
+    return (void*)&gl4es_glUnlockArrays;
+  }
+
+  void* gp = SDL_GL_GetProcAddress(procname);
+  CPrintF(">>>>>## SDL_GL_GetPRocAddress: %s %p\n", procname, gp);
+  if (gp) {
+    return gp;
+  }
+
+  CPrintF("MISSING OGL_GetProcAddres: %s\n", procname);
+  return (void*) NULL;
+#else
+  return (SDL_GL_GetProcAddress(procname));
+#endif
+  return NULL;
 }
 
 // prepares pixel format for OpenGL context
@@ -101,7 +150,12 @@ BOOL CGfxLibrary::SetupPixelFormat_OGL( HDC hdc, BOOL bReport/*=FALSE*/)
        if( gap_iStencilBits<3) gap_iStencilBits = 0;
   else if( gap_iStencilBits<7) gap_iStencilBits = 4;
   else                         gap_iStencilBits = 8;
-
+#ifdef __EMSCRIPTEN__
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
   SDL_GL_SetAttribute(SDL_GL_RED_SIZE, (dd != DD_16BIT) ? 8 : 5);
   SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, (dd != DD_16BIT) ? 8 : 6);
   SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, (dd != DD_16BIT) ? 8 : 5);
@@ -109,6 +163,7 @@ BOOL CGfxLibrary::SetupPixelFormat_OGL( HDC hdc, BOOL bReport/*=FALSE*/)
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, gap_iDepthBits);
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, gap_iStencilBits);
+#endif
 
   STUBBED("co-opt the existing T-buffer support for multisampling?");
   //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, x);

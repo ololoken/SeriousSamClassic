@@ -1041,7 +1041,16 @@ expression
             // just call the function
             $$.sttType = STT_VOID;
             PUSHPARAMS;
+#ifdef __EMSCRIPTEN__
+            void *pArgs = _ubStack + _iStack - $3.ctBytes;
+            if ($3.ctBytes == 0) {
+              ((void (*)())$1->ss_pvValue)();
+            } else {
+              ((void (*)(void *))$1->ss_pvValue)(pArgs);
+            }
+#else
             ((void (*)(FUNCSIG))$1->ss_pvValue)(CALLPARAMS);
+#endif
           // if index
           } else if (stResult.st_sttType==STT_INDEX) {
             // call the function and return result

@@ -536,6 +536,8 @@ static void SetupMemoryManager(void)
       sys_iRAMPhys = 512;
     fclose(esrev);
   };
+  #elif __EMSCRIPTEN__
+  sys_iRAMPhys = 512;
   #else
   sys_iRAMPhys = 1;  // !!! FIXME: This is bad. Bad. BAD.
   #endif
@@ -673,8 +675,14 @@ ENGINE_API void SE_InitEngine(CTString strGameID)
   }
 
   AnalyzeApplicationPath();
+#ifdef __EMSCRIPTEN__
+  _fnmApplicationPath = CTString(getenv("HOME"));
+  _fnmApplicationExe = CTString(getenv("HOME"));
+#else
   _fnmApplicationPath = CTString(strDirPath);
   _fnmApplicationExe = CTString(strExePath);
+#endif
+
 #ifdef PLATFORM_UNIX
     // rcg01012002 calculate user dir.
   char buf[MAX_PATH];

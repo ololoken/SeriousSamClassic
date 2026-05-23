@@ -106,7 +106,7 @@ typedef uint32_t UINT;
 
   #define PLATFORM_64BIT 1
 
-#elif defined(__i386) || defined(_M_IX86) || defined(__arm__) || defined(_M_ARM) || defined(__POWERPC__) \
+#elif defined(__EMSCRIPTEN__) || defined(__i386) || defined(_M_IX86) || defined(__arm__) || defined(_M_ARM) || defined(__POWERPC__) \
       || defined(_M_PPC) || defined(_ARCH_PPC) || (defined(mips) && !defined(__LP64__)) || (defined(mips__) && !defined(__LP64__)) || (defined(__mips__) && !defined(__LP64__))
 
   #define PLATFORM_32BIT 1
@@ -177,7 +177,11 @@ MY_STATIC_ASSERT(size_tSize, sizeof(size_t) == sizeof(void*));
     #include <string.h>
     #include <stdlib.h>
     #include <unistd.h>
+#ifdef __EMSCRIPTEN__
+    #include <fcntl.h>
+#else
     #include <sys/fcntl.h>
+#endif
     #include <sys/stat.h>
     #include <sys/types.h>
     #include <sys/param.h>
@@ -228,7 +232,9 @@ MY_STATIC_ASSERT(size_tSize, sizeof(size_t) == sizeof(void*));
     #define _mkdir(x) mkdir(x, S_IRWXU)
     #define _open open
     #define _close close
+#ifndef __EMSCRIPTEN__
     #define _strupr strupr
+#endif
     #define stricmp strcasecmp
     #define strcmpi strcasecmp
     #define strnicmp strncasecmp
@@ -302,9 +308,9 @@ MY_STATIC_ASSERT(size_tSize, sizeof(size_t) == sizeof(void*));
     }
 
     typedef uint64_t __uint64;
-    #if (!defined __INTEL_COMPILER) && (!defined PLATFORM_FREEBSD) && (!defined PLATFORM_MACOSX)
+    #if (!defined __INTEL_COMPILER) && (!defined PLATFORM_FREEBSD) && (!defined PLATFORM_MACOSX) && (!defined EMSCRIPTEN)
       typedef int64_t __int64;
-    #elif (!defined PLATFORM_FREEBSD) && (!defined PLATFORM_MACOSX)
+    #elif (!defined PLATFORM_FREEBSD) && (!defined PLATFORM_MACOSX) && (!defined EMSCRIPTEN)
       typedef long long int // #define __INT64_TYPE__ long long int
     #endif
 
@@ -410,7 +416,7 @@ typedef int64_t  __int64 ;
 
 
 // Stupid GCC bug.
-#if (__GNUC__ >= 3)
+#if (__GNUC__ >= 3) && !defined(__EMSCRIPTEN__)
   #define _offsetof(cl, mbr) (((size_t)&(((cl *)0x0004)->mbr)) - 0x0004)
 #else
   // you need <stddef.h> for this!

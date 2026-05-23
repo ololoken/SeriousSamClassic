@@ -643,8 +643,10 @@ void CMGHighScore::Render( CDrawPort *pdp)
 #pragma clang diagnostic ignored "-Wenum-constexpr-conversion"
     case (CSessionProperties::GameDifficulty)-100:
 #pragma clang diagnostic pop
+#elif __EMSCRIPTEN__
+    case -100:
 #else
-	case (CSessionProperties::GameDifficulty)-100:
+    case (CSessionProperties::GameDifficulty)-100:
 #endif
       strHighScores[i+1][1] = "---";
       continue;

@@ -1,8 +1,13 @@
-## Serious Sam Classic
-[![Build status](https://github.com/tx00100xt/SeriousSamClassic/actions/workflows/cibuild.yml/badge.svg)](https://github.com/tx00100xt//SeriousSamClassic/actions/)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL_v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/tx00100xt/SeriousSamClassic)](https://github.com/tx00100xt/SeriousSamClassic/releases/tag/1.10.7)
-[![Github downloads](https://img.shields.io/github/downloads/tx00100xt/SeriousSamClassic/total.svg?logo=github&logoColor=white&style=flat-square&color=E75776)](https://github.com/tx00100xt/SeriousSamClassic/releases/)
+## Serious Sam Classic Web
+
+This emscripten port of this great game aimed to run in browser.
+
+```shell
+emcmake cmake ../ -DCMAKE_BUILD_TYPE=Release -DUSE_SINGLE_THREAD=ON -DUSE_ASM=OFF -DUSE_SYSTEM_ZLIB=OFF -DUSE_SYSTEM_SDL2=OFF -DBUILD_DEDICATED_SERVER=OFF -DBUILD_MAKEFONT=OFF -DBUILD_TEXConv=OFF
+```
+
+[Play in browser](https://gamesturch.in/sstfe/index.html) 
+====
 
 This is the source code for Serious Engine v.1.10, including the following projects:
 

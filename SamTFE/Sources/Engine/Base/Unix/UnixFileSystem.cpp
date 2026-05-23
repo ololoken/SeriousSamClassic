@@ -107,8 +107,13 @@ BOOL CFileSystem::IsDirectory(const char *fname)
 
 CUnixFileSystem::CUnixFileSystem(const char *argv0, const char *gamename)
 {
+#ifdef __EMSCRIPTEN__
+    exePath = getenv("XDATA_HOME");
+    userDir = getenv("XDATA_HOME");
+#else
     exePath = SDL_GetBasePath();
     userDir = SDL_GetPrefPath("Serious-Engine", gamename);
+#endif
 }
 
 

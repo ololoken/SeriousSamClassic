@@ -219,7 +219,7 @@ if(CMAKE_INSTALL_PREFIX STREQUAL "/usr" OR USE_SYSTEM_INSTALL)
 endif()
 
 # ImageMagic needed for SYSTEM INSTALL
-if(NOT LOCAL_INSTALL)
+if(NOT LOCAL_INSTALL AND NOT EMSCRIPTEN)
 	find_package(ImageMagick COMPONENTS convert)
     if(ImageMagick_convert_FOUND)
         #message(STATUS "ImageMagick convert found: ${ImageMagick_convert_EXECUTABLE}")
@@ -374,6 +374,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
 			add_compile_options(-march=loongarch64)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "mips|mips64|mipsel|mips64el")
 			add_compile_options(-march=mips32r2)
+        elseif (EMSCRIPTEN)
+            message(STATUS "Emscripten build")
 		else()
             if(LOCAL_INSTALL)
 			    add_compile_options(-march=native)
@@ -419,6 +421,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
             message(STATUS "AARCH64, -march=armv8-a+crc+fp+simd")
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "loongarch64")
             message(STATUS "Loongsoon 3 5000 series processor")
+        elseif (EMSCRIPTEN)
+            message(STATUS "Emscripten build")
         else()
             message(FATAL_ERROR "Unknown ARM processor '${CMAKE_SYSTEM_PROCESSOR}'")
         endif()
@@ -497,7 +501,7 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
     		add_definitions(-DPRAGMA_ONCE=1)
                 add_definitions(-D_CRT_SECURE_NO_WARNINGS=1)
                 add_definitions(-D_CRT_SECURE_NO_DEPRECATE=1)
-	elseif(LINUX)
+	elseif(LINUX OR EMSCRIPTEN)
 	    	set(CMAKE_SKIP_RPATH ON CACHE BOOL "Skip RPATH" FORCE)
     		add_definitions(-DPLATFORM_UNIX=1)
     		add_definitions(-D_FILE_OFFSET_BITS=64)
@@ -620,7 +624,7 @@ if(PANDORA)
 else()
     # !!!Do something here!
 endif()
-else()
+elseif(NOT EMSCRIPTEN)
     include_directories(External/libvorbis/include)
 endif()
 
@@ -657,6 +661,15 @@ endmacro()
 if(NOT ECC)
     add_parser_and_scanner("Ecc/Parser" "Ecc/Scanner")
     add_executable(ecc Ecc/Main.cpp Ecc/Parser.cpp Ecc/Parser.h Ecc/Scanner.cpp)
+    if(EMSCRIPTEN)
+        target_link_options(ecc PRIVATE
+                -sSTACK_SIZE=8MB
+                -sALLOW_MEMORY_GROWTH
+                -sEXIT_RUNTIME
+                -sENVIRONMENT=node
+                -sNODERAWFS
+        )
+    endif()
     set(ECC "ecc")
 endif()
 
@@ -954,25 +967,34 @@ add_custom_target(ParseEntities${MP} DEPENDS ${ENTITIES_H})
 
 set(ENTITIESMPLIB "Entities${MP}${DEBUGSUFFIX}")
 if(INTERNAL_NAME STREQUAL "serioussam")
- add_library(${ENTITIESMPLIB} SHARED
-     ${ENTITIES_CPP}
-     Entities/Common/Common.cpp
-     Entities/Common/Debris.cpp
-     Entities/Common/Particles.cpp
-     Entities/Common/Stats.cpp
-     Entities/Common/PathFinding.cpp
-     Entities/Common/HUD.cpp
- )
+    set(ENTITIESMPLIB_SRC
+            ${ENTITIES_CPP}
+            Entities/Common/Common.cpp
+            Entities/Common/Debris.cpp
+            Entities/Common/Particles.cpp
+            Entities/Common/Stats.cpp
+            Entities/Common/PathFinding.cpp
+            Entities/Common/HUD.cpp
+    )
 else()
- add_library(${ENTITIESMPLIB} SHARED
-     ${ENTITIES_CPP}
-     EntitiesMP/Common/Common.cpp
- 	 EntitiesMP/Common/Particles.cpp
- 	 EntitiesMP/Common/EmanatingParticles.cpp
- 	 EntitiesMP/Common/PathFinding.cpp
- 	 EntitiesMP/Common/HUD.cpp
- )
+    set(ENTITIESMPLIB_SRC
+            ${ENTITIES_CPP}
+            EntitiesMP/Common/Common.cpp
+            EntitiesMP/Common/Particles.cpp
+            EntitiesMP/Common/EmanatingParticles.cpp
+            EntitiesMP/Common/PathFinding.cpp
+            EntitiesMP/Common/HUD.cpp
+    )
 endif()
+
+if(EMSCRIPTEN)
+    add_executable(${ENTITIESMPLIB} ${ENTITIESMPLIB_SRC})
+    target_compile_options(${ENTITIESMPLIB} PRIVATE -fPIC)
+    target_link_options(${ENTITIESMPLIB} PRIVATE -sSIDE_MODULE -fPIC)
+    set_target_properties(${ENTITIESMPLIB} PROPERTIES SUFFIX ".wasm")
+else ()
+    add_library(${ENTITIESMPLIB} SHARED ${ENTITIESMPLIB_SRC})
+endif ()
 
 if(MACOSX)
     target_link_libraries(${ENTITIESMPLIB} "-undefined dynamic_lookup")
@@ -980,20 +1002,29 @@ endif()
 add_dependencies(${ENTITIESMPLIB} ParseEntities${MP})
 
 set(GAMEMPLIB "Game${MP}${DEBUGSUFFIX}")
-add_library(${GAMEMPLIB} SHARED
-    GameMP/Camera.cpp
-    GameMP/CompMessage.cpp
-    GameMP/CompModels.cpp
-    GameMP/Computer.cpp
-    GameMP/Console.cpp
-    GameMP/Controls.cpp
-    GameMP/Game.cpp
-    GameMP/LCDDrawing.cpp
-    GameMP/LoadingHook.cpp
-    GameMP/Map.cpp
-    GameMP/SessionProperties.cpp
-    GameMP/WEDInterface.cpp
-)
+
+set(GAMEMPLIB_SRC
+        GameMP/Camera.cpp
+        GameMP/CompMessage.cpp
+        GameMP/CompModels.cpp
+        GameMP/Computer.cpp
+        GameMP/Console.cpp
+        GameMP/Controls.cpp
+        GameMP/Game.cpp
+        GameMP/LCDDrawing.cpp
+        GameMP/LoadingHook.cpp
+        GameMP/Map.cpp
+        GameMP/SessionProperties.cpp
+        GameMP/WEDInterface.cpp)
+
+if(EMSCRIPTEN)
+    add_executable(${GAMEMPLIB} ${GAMEMPLIB_SRC})
+    target_compile_options(${GAMEMPLIB} PRIVATE -fPIC)
+    target_link_options(${GAMEMPLIB} PRIVATE -sSIDE_MODULE -fPIC)
+    set_target_properties(${GAMEMPLIB} PROPERTIES SUFFIX ".wasm")
+else ()
+    add_library(${GAMEMPLIB} SHARED ${GAMEMPLIB_SRC})
+endif ()
 if(MACOSX)
     target_link_libraries(${GAMEMPLIB} "-undefined dynamic_lookup")
 endif()
@@ -1001,28 +1032,32 @@ add_dependencies(${GAMEMPLIB} ParseEntities${MP})
 
 if(NOT XPLUS)
 set(SHADERSLIB "Shaders${MP}${DEBUGSUFFIX}")
-add_library(${SHADERSLIB} SHARED
-    Shaders/AddShader.cpp
-    Shaders/AddShaderDS.cpp
-    Shaders/BaseShader.cpp
-    Shaders/BaseShaderDS.cpp
-    Shaders/BaseTransparent.cpp
-    Shaders/BaseTransparentDS.cpp
-    Shaders/ColorShader.cpp
-    Shaders/Common.cpp
-    Shaders/DetailShader.cpp
-    Shaders/DisplaceShader.cpp
-    Shaders/InvisibleShader.cpp
-    Shaders/MultiLayerShader.cpp
-    Shaders/Reflection.cpp
-    Shaders/ReflectionDS.cpp
-    Shaders/ReftectionAndSpecular.cpp
-    Shaders/ReftectionAndSpecularDS.cpp
-    Shaders/Specular.cpp
-    Shaders/SpecularDS.cpp
-    Shaders/StdH.cpp
-    Shaders/Translucent.cpp
-)
+set(SHADERSLIB_SRC
+        Shaders/AddShader.cpp
+        Shaders/AddShaderDS.cpp
+        Shaders/BaseShader.cpp
+        Shaders/BaseShaderDS.cpp
+        Shaders/BaseTransparent.cpp
+        Shaders/BaseTransparentDS.cpp
+        Shaders/ColorShader.cpp
+        Shaders/Common.cpp
+        Shaders/DetailShader.cpp
+        Shaders/DisplaceShader.cpp
+        Shaders/InvisibleShader.cpp
+        Shaders/MultiLayerShader.cpp
+        Shaders/Reflection.cpp
+        Shaders/ReflectionDS.cpp
+        Shaders/ReftectionAndSpecular.cpp
+        Shaders/ReftectionAndSpecularDS.cpp
+        Shaders/Specular.cpp
+        Shaders/SpecularDS.cpp
+        Shaders/StdH.cpp
+        Shaders/Translucent.cpp)
+if(EMSCRIPTEN)
+    add_library(${SHADERSLIB} STATIC ${SHADERSLIB_SRC})
+else ()
+    add_library(${SHADERSLIB} SHARED ${SHADERSLIB_SRC})
+endif ()
 if(MACOSX)
     target_link_libraries(${SHADERSLIB} "-undefined dynamic_lookup")
 endif()
@@ -1272,9 +1307,11 @@ set(ENGINE_SRCS
     ${ZLIB_SRCS}
 )
 set(ENGINELIB "Engine${MP}${DEBUGSUFFIX}")
-add_library(${ENGINELIB} SHARED
-     ${ENGINE_SRCS}
-)
+if(EMSCRIPTEN)
+    add_library(${ENGINELIB} STATIC ${ENGINE_SRCS})
+else ()
+    add_library(${ENGINELIB} SHARED ${ENGINE_SRCS})
+endif ()
 if(MACOSX)
     target_link_libraries(${ENGINELIB} "-undefined dynamic_lookup")
 endif()
@@ -1322,6 +1359,47 @@ add_dependencies(SeriousSam${MP} ParseEntities${MP})
 # Make symbols in the main executable available to dynamic objects
 set_target_properties(SeriousSam${MP} PROPERTIES ENABLE_EXPORTS ON)
 
+if(EMSCRIPTEN)
+    set(USE_FLAGS " \
+        --use-port=sdl2 \
+        -fwasm-exceptions \
+        --use-port=ogg \
+        --use-port=vorbis")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS} --profiling-funcs -sASSERTIONS=2")
+
+    target_compile_options(SeriousSam${MP} PRIVATE
+            --use-port=sdl2
+            --use-port=ogg
+            --use-port=vorbis
+            -fwasm-exceptions
+            -sMAIN_MODULE
+            $<$<CONFIG:RELEASE>:-O3 -flto>
+            $<$<CONFIG:DEBUG>:-g -gsource-map -fdebug-prefix-map=/mnt=/Users>
+    )
+    target_link_options(SeriousSam${MP} PRIVATE
+            --use-port=sdl2
+            --use-port=ogg
+            --use-port=vorbis
+            -fwasm-exceptions
+            -sMAIN_MODULE
+            -sJSPI
+            -sSTACK_SIZE=8MB
+            -sINITIAL_MEMORY=512MB
+            -sALLOW_MEMORY_GROWTH
+            -sMODULARIZE
+            -sENVIRONMENT=web
+            -sEXPORTED_RUNTIME_METHODS=callMain,addRunDependency,removeRunDependency,ENV,FS,PATH
+            #-sEMULATE_FUNCTION_POINTER_CASTS
+            -lidbfs.js
+            -sEXPORT_ES6
+            -sEXIT_RUNTIME
+            -lGL4ES -sFULL_ES2
+            $<$<CONFIG:RELEASE>:-O3 -flto>
+            $<$<CONFIG:DEBUG>:-g -gsource-map -sASSERTIONS=2 --profiling-funcs -fdebug-prefix-map=/mnt=/Users>
+    )
+endif()
 
 # !!! FIXME: this is an option because you have to recompile the entire engine twice.
 # !!! FIXME:  If we can put the engine in a static library and not lose symbols,
@@ -1378,7 +1456,12 @@ set(AMP11LIB_SOURCE_FILES
     amp11lib/ampdec.h
     amp11lib/ampsynth.cpp)
 
-add_library(amp11lib${MP} SHARED ${AMP11LIB_SOURCE_FILES})
+if (EMSCRIPTEN)
+    add_library(amp11lib${MP} STATIC ${AMP11LIB_SOURCE_FILES})
+    target_link_libraries(SeriousSam${MP} amp11lib${MP})
+else ()
+    add_library(amp11lib${MP} SHARED ${AMP11LIB_SOURCE_FILES})
+endif ()
 endif()
 
 if(MACOSX)
@@ -1451,6 +1534,7 @@ if(FREEBSD)
 endif()
 
 # Set output name for not local installation
+if(NOT EMSCRIPTEN)
 if(LOCAL_INSTALL)
  set_target_properties(SeriousSam${MP} PROPERTIES OUTPUT_NAME "SeriousSam")
  set_target_properties(DedicatedServer${MP}  PROPERTIES OUTPUT_NAME "DedicatedServer")
@@ -1466,6 +1550,7 @@ else()
  set_target_properties(amp11lib${MP} PROPERTIES OUTPUT_NAME "amp11lib")
  set_target_properties(${SHADERSLIB} PROPERTIES OUTPUT_NAME "Shaders")
 endif()
+endif ()
 endif() # NOT XPLUS
 
 # RAKE! Install Section.

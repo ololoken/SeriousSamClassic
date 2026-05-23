@@ -156,6 +156,8 @@ CTFileName CDynamicLoader::ConvertLibNameToPlatform(const char *libname)
 {
     #if PLATFORM_MACOSX
     const char *DLLEXTSTR = ".dylib";
+    #elif __EMSCRIPTEN__
+    const char *DLLEXTSTR = ".wasm";
     #else
     const char *DLLEXTSTR = ".so";
     #endif

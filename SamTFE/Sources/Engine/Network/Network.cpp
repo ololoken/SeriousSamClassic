@@ -73,6 +73,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include <Engine/GameAgent/GameAgent.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 
 // pointer to global instance of the only game object in the application
 CNetworkLibrary *_pNetwork= NULL;
@@ -1115,6 +1119,12 @@ void CNetworkLibrary::Save_t(const CTFileName &fnmGame) // throw char *
   strmFile.WriteID_t("GAME");
   ga_sesSessionState.Write_t(&strmFile);
   strmFile.WriteID_t("GEND");   // game end
+#ifdef __EMSCRIPTEN__
+  EM_ASM( { Module.callbacks?.onFileWrite?.({
+    path: UTF8ToString($0),
+    op: 'write'
+  }) }, fnmGame.str_String );
+#endif
 }
 
 /*

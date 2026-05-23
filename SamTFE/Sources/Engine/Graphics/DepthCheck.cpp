@@ -63,6 +63,7 @@ static void UpdateDepthPointsVisibility( const CDrawPort *pdp, const INDEX iMirr
   { 
     _sfStats.StartTimer(CStatForm::STI_GFXAPI);
     FLOAT fPointOoK;
+#ifndef EMSCRIPTEN
     // for each stored point
     for( INDEX idi=0; idi<ctCount; idi++) {
       DepthInfo &di = pdi[idi];
@@ -75,6 +76,7 @@ static void UpdateDepthPointsVisibility( const CDrawPort *pdp, const INDEX iMirr
       di.di_bVisible = (di.di_fOoK<fPointOoK);
     }
     // done
+#endif
     _sfStats.StopTimer(CStatForm::STI_GFXAPI);
     return;
   }

@@ -219,7 +219,7 @@ if(CMAKE_INSTALL_PREFIX STREQUAL "/usr" OR USE_SYSTEM_INSTALL)
 endif()
 
 # ImageMagic needed for SYSTEM INSTALL
-if(NOT LOCAL_INSTALL)
+if(NOT LOCAL_INSTALL AND NOT EMSCRIPTEN)
 	find_package(ImageMagick COMPONENTS convert)
     if(ImageMagick_convert_FOUND)
         #message(STATUS "ImageMagick convert found: ${ImageMagick_convert_EXECUTABLE}")
@@ -374,6 +374,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
 			add_compile_options(-march=loongarch64)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "mips|mips64|mipsel|mips64el")
 			add_compile_options(-march=mips32r2)
+        elseif (EMSCRIPTEN)
+            message(STATUS "Emscripten build")
 		else()
             if(LOCAL_INSTALL)
 			    add_compile_options(-march=native)
@@ -419,6 +421,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
             message(STATUS "AARCH64, -march=armv8-a+crc+fp+simd")
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "loongarch64")
             message(STATUS "Loongsoon 3 5000 series processor")
+        elseif (EMSCRIPTEN)
+            message(STATUS "Emscripten build")
         else()
             message(FATAL_ERROR "Unknown ARM processor '${CMAKE_SYSTEM_PROCESSOR}'")
         endif()
@@ -497,7 +501,7 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_
     		add_definitions(-DPRAGMA_ONCE=1)
                 add_definitions(-D_CRT_SECURE_NO_WARNINGS=1)
                 add_definitions(-D_CRT_SECURE_NO_DEPRECATE=1)
-	elseif(LINUX)
+	elseif(LINUX OR EMSCRIPTEN)
 	    	set(CMAKE_SKIP_RPATH ON CACHE BOOL "Skip RPATH" FORCE)
     		add_definitions(-DPLATFORM_UNIX=1)
     		add_definitions(-D_FILE_OFFSET_BITS=64)
@@ -657,6 +661,15 @@ endmacro()
 if(NOT ECC)
     add_parser_and_scanner("Ecc/Parser" "Ecc/Scanner")
     add_executable(ecc-se Ecc/Main.cpp Ecc/Parser.cpp Ecc/Parser.h Ecc/Scanner.cpp)
+    if(EMSCRIPTEN)
+        target_link_options(ecc-se PRIVATE
+                -sSTACK_SIZE=8MB
+                -sALLOW_MEMORY_GROWTH
+                -sEXIT_RUNTIME
+                -sENVIRONMENT=node
+                -sNODERAWFS
+        )
+    endif()
     set(ECC-SE "ecc-se")
 endif()
 
@@ -954,7 +967,7 @@ add_custom_target(ParseEntities${MP} DEPENDS ${ENTITIES_H})
 
 set(ENTITIESMPLIB "Entities${MP}${DEBUGSUFFIX}")
 if(INTERNAL_NAME STREQUAL "serioussam")
- add_library(${ENTITIESMPLIB} SHARED
+ add_library(${ENTITIESMPLIB} ${LIB_TYPE}
      ${ENTITIES_CPP}
      Entities/Common/Common.cpp
      Entities/Common/Debris.cpp
@@ -964,7 +977,7 @@ if(INTERNAL_NAME STREQUAL "serioussam")
      Entities/Common/HUD.cpp
  )
 else()
- add_library(${ENTITIESMPLIB} SHARED
+ add_library(${ENTITIESMPLIB} ${LIB_TYPE}
      ${ENTITIES_CPP}
      EntitiesMP/Common/Common.cpp
  	 EntitiesMP/Common/Particles.cpp
@@ -980,7 +993,7 @@ endif()
 add_dependencies(${ENTITIESMPLIB} ParseEntities${MP})
 
 set(GAMEMPLIB "Game${MP}${DEBUGSUFFIX}")
-add_library(${GAMEMPLIB} SHARED
+add_library(${GAMEMPLIB} ${LIB_TYPE}
     GameMP/Camera.cpp
     GameMP/CompMessage.cpp
     GameMP/CompModels.cpp
@@ -1001,7 +1014,7 @@ add_dependencies(${GAMEMPLIB} ParseEntities${MP})
 
 if(NOT XPLUS)
 set(SHADERSLIB "Shaders${MP}${DEBUGSUFFIX}")
-add_library(${SHADERSLIB} SHARED
+add_library(${SHADERSLIB} ${LIB_TYPE}
     Shaders/AddShader.cpp
     Shaders/AddShaderDS.cpp
     Shaders/BaseShader.cpp
@@ -1272,7 +1285,7 @@ set(ENGINE_SRCS
     ${ZLIB_SRCS}
 )
 set(ENGINELIB "Engine${MP}${DEBUGSUFFIX}")
-add_library(${ENGINELIB} SHARED
+add_library(${ENGINELIB} ${LIB_TYPE}
      ${ENGINE_SRCS}
 )
 if(MACOSX)
@@ -1321,6 +1334,38 @@ target_link_libraries(SeriousSam${MP} ${ENGINELIB})
 add_dependencies(SeriousSam${MP} ParseEntities${MP})
 # Make symbols in the main executable available to dynamic objects
 set_target_properties(SeriousSam${MP} PROPERTIES ENABLE_EXPORTS ON)
+
+if(EMSCRIPTEN)
+    set(USE_FLAGS "--use-port=sdl2")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
+
+    target_compile_options(SeriousSam${MP} PRIVATE
+            --use-port=sdl2
+            -fwasm-exceptions
+            $<$<CONFIG:RELEASE>:-O3 -flto>
+            $<$<CONFIG:DEBUG>:-g -gsource-map>
+    )
+    target_link_options(SeriousSam${MP} PRIVATE
+            --use-port=sdl2
+            -fwasm-exceptions
+            -sJSPI
+            -sSTACK_SIZE=8MB
+            -sINITIAL_MEMORY=512MB
+            -sALLOW_MEMORY_GROWTH
+            -sMODULARIZE
+            -sENVIRONMENT=web
+            -sEXPORTED_RUNTIME_METHODS=callMain,addRunDependency,removeRunDependency,ENV,FS,PATH,wasmTable
+            -sEXPORT_ALL
+            -lidbfs.js
+            -sEXPORT_ES6
+            -sEXIT_RUNTIME
+            -sFULL_ES2
+            $<$<CONFIG:RELEASE>:-O3 -flto>
+            $<$<CONFIG:DEBUG>:-g -gsource-map -sASSERTIONS=2 --profiling-funcs>
+    )
+endif()
 
 
 # !!! FIXME: this is an option because you have to recompile the entire engine twice.
@@ -1378,7 +1423,7 @@ set(AMP11LIB_SOURCE_FILES
     amp11lib/ampdec.h
     amp11lib/ampsynth.cpp)
 
-add_library(amp11lib${MP} SHARED ${AMP11LIB_SOURCE_FILES})
+add_library(amp11lib${MP} ${LIB_TYPE} ${AMP11LIB_SOURCE_FILES})
 endif()
 
 if(MACOSX)
@@ -1451,6 +1496,7 @@ if(FREEBSD)
 endif()
 
 # Set output name for not local installation
+if(NOT EMSCRIPTEN)
 if(LOCAL_INSTALL)
  set_target_properties(SeriousSam${MP} PROPERTIES OUTPUT_NAME "SeriousSam")
  set_target_properties(DedicatedServer${MP}  PROPERTIES OUTPUT_NAME "DedicatedServer")
@@ -1466,6 +1512,7 @@ else()
  set_target_properties(amp11lib${MP} PROPERTIES OUTPUT_NAME "amp11lib")
  set_target_properties(${SHADERSLIB} PROPERTIES OUTPUT_NAME "Shaders")
 endif()
+endif ()
 endif() # NOT XPLUS
 
 # RAKE! Install Section.

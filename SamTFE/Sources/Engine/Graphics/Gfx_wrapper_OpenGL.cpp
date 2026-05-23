@@ -15,6 +15,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 
 
+// cached array state for immediate-mode fallback
+static GFXVertex4 *_apvtxOGL = NULL;
+static GFXNormal  *_apnorOGL = NULL;
+static GFXColor   *_apcolOGL = NULL;
+static BOOL        _bNormalArrayOGL = FALSE;
+static BOOL        _abTexCoordArrayOGL[GFX_MAXTEXUNITS] = { FALSE, FALSE, FALSE, FALSE };
+static BOOL        _abTexCoord4OGL[GFX_MAXTEXUNITS] = { FALSE, FALSE, FALSE, FALSE };
+static GFXTexCoord *_aptexOGL[GFX_MAXTEXUNITS] = { NULL, NULL, NULL, NULL };
+
+
 // ENABLE/DISABLE FUNCTIONS
 
 
@@ -62,6 +72,7 @@ static void ogl_DisableTexture(void)
 
   pglDisable(GL_TEXTURE_2D);
   pglDisableClientState(GL_TEXTURE_COORD_ARRAY);
+  _abTexCoordArrayOGL[GFX_iActiveTexUnit] = FALSE;
   OGL_CHECKERROR;
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
@@ -506,6 +517,7 @@ static void ogl_DisableColorArray(void)
   _sfStats.StartTimer(CStatForm::STI_GFXAPI);
 
   pglDisableClientState(GL_COLOR_ARRAY);
+  _apcolOGL = NULL;
   OGL_CHECKERROR;
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
@@ -1050,6 +1062,15 @@ static void ogl_SetVertexArray( GFXVertex4 *pvtx, INDEX ctVtx)
   ASSERT(  pglIsEnabled( GL_VERTEX_ARRAY));
   pglVertexPointer( 3, GL_FLOAT, sizeof (*pvtx), pvtx);
   OGL_CHECKERROR;
+  _apvtxOGL = pvtx;
+  _apnorOGL = NULL;
+  _apcolOGL = NULL;
+  _bNormalArrayOGL = FALSE;
+  for( INDEX iUnit=0; iUnit<GFX_MAXTEXUNITS; iUnit++) {
+    _abTexCoordArrayOGL[iUnit] = FALSE;
+    _abTexCoord4OGL[iUnit] = FALSE;
+    _aptexOGL[iUnit] = NULL;
+  }
   GFX_bColorArray = FALSE; // mark that color array has been disabled (because of potential LockArrays)
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
@@ -1067,6 +1088,8 @@ static void ogl_SetNormalArray( GFXNormal *pnor)
   pglEnableClientState(GL_NORMAL_ARRAY);
   ASSERT( pglIsEnabled(GL_NORMAL_ARRAY));
   pglNormalPointer( GL_FLOAT, sizeof (*pnor), pnor);
+  _apnorOGL = pnor;
+  _bNormalArrayOGL = TRUE;
   OGL_CHECKERROR;
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
@@ -1079,6 +1102,7 @@ static void ogl_SetColorArray( GFXColor *pcol)
 {
   ASSERT( _pGfx->gl_eCurrentAPI==GAT_OGL);
   ASSERT( pcol!=NULL);
+  _apcolOGL = pcol;
   ogl_EnableColorArray();
   _sfStats.StartTimer(CStatForm::STI_GFXAPI);
   
@@ -1100,6 +1124,9 @@ static void ogl_SetTexCoordArray( GFXTexCoord *ptex, BOOL b4/*=FALSE*/)
   pglEnableClientState(GL_TEXTURE_COORD_ARRAY);
   ASSERT( pglIsEnabled(GL_TEXTURE_COORD_ARRAY));
   pglTexCoordPointer( b4?4:2, GL_FLOAT, sizeof (*ptex), ptex);
+  _aptexOGL[GFX_iActiveTexUnit] = ptex;
+  _abTexCoordArrayOGL[GFX_iActiveTexUnit] = TRUE;
+  _abTexCoord4OGL[GFX_iActiveTexUnit] = b4;
   OGL_CHECKERROR;
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
@@ -1122,10 +1149,71 @@ static void ogl_SetConstantColor( COLOR col)
 
 
 
+__forceinline const FLOAT *ogl_GetTexCoord( INDEX iUnit, INDEX iVtx)
+{
+  return (const FLOAT*)(((UBYTE*)_aptexOGL[iUnit]) + iVtx*sizeof(GFXTexCoord));
+}
+
+
+__forceinline void ogl_EmitTexCoord( INDEX iUnit, INDEX iVtx)
+{
+  if( !GFX_abTexture[iUnit] || !_abTexCoordArrayOGL[iUnit] || _aptexOGL[iUnit]==NULL) return;
+
+  const FLOAT *pfTex = ogl_GetTexCoord( iUnit, iVtx);
+  if( iUnit==0) {
+    if( _abTexCoord4OGL[iUnit]) pglTexCoord4f( pfTex[0], pfTex[1], pfTex[2], pfTex[3]);
+    else                       pglTexCoord2f( pfTex[0], pfTex[1]);
+  }
+  else {
+    const GLenum eTextureUnit = GL_TEXTURE0_ARB+iUnit;
+    if( pglMultiTexCoord4f!=NULL) {
+      if( _abTexCoord4OGL[iUnit]) pglMultiTexCoord4f( eTextureUnit, pfTex[0], pfTex[1], pfTex[2], pfTex[3]);
+      else                       pglMultiTexCoord4f( eTextureUnit, pfTex[0], pfTex[1], 0.0f, 1.0f);
+    } else {
+#ifndef __EMSCRIPTEN__
+      const GLenum eTextureUnitEXT = GL_TEXTURE0_EXT+iUnit;
+      if( _abTexCoord4OGL[iUnit]) {
+        ASSERT( pglMultiTexCoord4fEXT!=NULL);
+        if( pglMultiTexCoord4fEXT!=NULL) pglMultiTexCoord4fEXT( eTextureUnitEXT, pfTex[0], pfTex[1], pfTex[2], pfTex[3]);
+      } else {
+        ASSERT( pglMultiTexCoord2fEXT!=NULL);
+        if( pglMultiTexCoord2fEXT!=NULL) pglMultiTexCoord2fEXT( eTextureUnitEXT, pfTex[0], pfTex[1]);
+      }
+#endif
+    } 
+  }
+}
+
+
+__forceinline void ogl_EmitArrayVertex( INDEX iVtx)
+{
+  ASSERT( iVtx>=0 && iVtx<GFX_ctVertices);
+  ASSERT( _apvtxOGL!=NULL);
+
+  if( _bNormalArrayOGL && _apnorOGL!=NULL) {
+    const GFXNormal &nor = _apnorOGL[iVtx];
+    pglNormal3f( nor.nx, nor.ny, nor.nz);
+  }
+
+  if( GFX_bColorArray && _apcolOGL!=NULL) {
+    pglColor4ubv( (GLubyte*)&_apcolOGL[iVtx]);
+  }
+
+  const INDEX ctTextureUnits = Min( _pGfx->gl_ctTextureUnits, (INDEX)GFX_MAXTEXUNITS);
+  for( INDEX iUnit=0; iUnit<ctTextureUnits; iUnit++) {
+    ogl_EmitTexCoord( iUnit, iVtx);
+  }
+
+  const GFXVertex4 &vtx = _apvtxOGL[iVtx];
+  pglVertex3f( vtx.x, vtx.y, vtx.z);
+}
+
+
 // draw prepared arrays
 static void ogl_DrawElements( INDEX ctElem, INDEX_T *pidx)
 {
   ASSERT( _pGfx->gl_eCurrentAPI==GAT_OGL);
+  ASSERT( _apvtxOGL!=NULL);
 #ifndef NDEBUG
   // check if all indices are inside lock count (or smaller than 65536)
   if( pidx!=NULL) for( INDEX i=0; i<ctElem; i++) ASSERT( pidx[i] < GFX_ctVertices);
@@ -1135,8 +1223,19 @@ static void ogl_DrawElements( INDEX ctElem, INDEX_T *pidx)
   _pGfx->gl_ctTotalTriangles += ctElem/3;  // for profiling
 
   // arrays or elements
-  if( pidx==NULL) pglDrawArrays( GL_QUADS, 0, ctElem);
-  else pglDrawElements( GL_TRIANGLES, ctElem, INDEX_GL, pidx);
+  if( pidx==NULL) {
+    pglBegin( GL_QUADS);
+    for( INDEX i=0; i<ctElem; i++) {
+      ogl_EmitArrayVertex(i);
+    }
+    pglEnd();
+  } else {
+    pglBegin( GL_TRIANGLES);
+    for( INDEX i=0; i<ctElem; i++) {
+      ogl_EmitArrayVertex(pidx[i]);
+    }
+    pglEnd();
+  }
   OGL_CHECKERROR;
 
   _sfStats.StopTimer(CStatForm::STI_GFXAPI);
